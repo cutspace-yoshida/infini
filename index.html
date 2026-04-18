@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>INFINI管理ツール</title>
+
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#4facfe">
+
+<style>
+body {
+  margin: 0;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f4f8;
+  color: #333;
+}
+
+.header {
+  background: linear-gradient(45deg, #4facfe, #00f2fe);
+  color: white;
+  padding: 10px;
+  text-align: center;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-icon {
+  height: 1.2em;
+  margin-right: 8px;
+  border-radius: 4px;
+}
+
+.container {
+  padding: 10px;
+}
+
+.card {
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+#target-date {
+  width: 100%;
+  font-size: 18px;
+  padding: 12px;
+  border: 2px solid #4facfe;
+  border-radius: 8px;
+  text-align: center;
+  background: #fff;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: white;
+}
+
+.schedule-table th, .schedule-table td {
+  border: 1px solid #e0e0e0;
+  padding: 10px 8px;
+  text-align: left;
+}
+
+.schedule-table th {
+  background: #f8f9fa;
+  width: 70px; /* 30分表記用に少し幅を広げました */
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+
+.time-row:nth-child(even) {
+  background-color: #fafafa;
+}
+
+.booked-name {
+  font-weight: bold;
+  color: #007bff;
+}
+
+.memo-text {
+  font-size: 11px;
+  color: #777;
+  display: block;
+}
+
+.input-group {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+.save-btn {
+  background: #4CAF50;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  width: 100%;
+  font-size: 16px;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <img src="icon.png" alt="INFINI" class="header-icon">
+  INFINI管理
+  <button onclick="showHelp()" style="width: auto; margin: 0 0 0 10px; padding: 5px 10px; background: rgba(255,255,255,0.2); font-size: 14px; border-radius: 50%;">？</button></div>
+ 
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <label style="font-size: 12px; color: #666;">表示日を選択</label>
+    <input type="date" id="target-date" onchange="displayData()">
+  </div>
+
+  <div class="card">
+    <div class="input-group">
+      <select id="reg-time" style="width: 45%;">
+        </select>
+      <input type="text" id="reg-name" placeholder="お客様名" style="width: 55%;">
+    </div>
+    
+    <div class="input-group">
+      <select id="reg-menu" style="width: 45%;">
+        <option value="">メニュー選択</option>
+        <option value="カット">カット</option>
+        <option value="カラー">カラー</option>
+        <option value="パーマ">パーマ</option>
+        <option value="その他">その他</option>
+      </select>
+      <textarea id="reg-memo" placeholder="メモ（詳細など）" rows="2" style="width: 55%; margin-top: 0;"></textarea>
+    </div>
+    
+    <button class="save-btn" onclick="saveData()">予約を追加</button>
+  </div>
+
+  <div class="card" style="padding: 5px;">
+    <table class="schedule-table" id="schedule-body">
+      </table>
+  </div>
+
+  <div style="text-align: center; margin-top: 20px;">
+    <button onclick="exportData()" style="width: auto; padding: 5px 10px; font-size: 12px; background: #999; color: white; border: none; border-radius: 5px;">バックアップ保存</button>
+  </div>
+
+</div>
+
+</div>
+
+<script>
+const STORAGE_KEY = "infini_schedule_v1";
+const START_HOUR = 8;
+const END_HOUR = 18;
+
+window.onload = () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById("target-date").value = today;
+  
+  // 予約フォームの時間を30分単位で作成
+  const select = document.getElementById("reg-time");
+  for(let h=START_HOUR; h<=END_HOUR; h++) {
+    ["00", "30"].forEach(m => {
+      if (h === END_HOUR && m === "30") return; // 18:30は除外
+      const time = `${h}:${m}`;
+      let opt = document.createElement("option");
+      opt.value = time;
+      opt.text = time;
+      select.appendChild(opt);
+    });
+  }
+  
+  displayData();
+};
+
+function saveData() {
+  const date = document.getElementById("target-date").value;
+  const time = document.getElementById("reg-time").value;
+  const name = document.getElementById("reg-name").value;
+  const memo = document.getElementById("reg-memo").value;
+
+  if (!name) {
+    alert("お客様名を入力してください");
+    return;
+  }
+
+  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  data.push({ date, time, name, memo });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+  document.getElementById("reg-name").value = "";
+  document.getElementById("reg-memo").value = "";
+  displayData();
+}
+
+function saveData() {
+  const date = document.getElementById("target-date").value;
+  const time = document.getElementById("reg-time").value;
+  const name = document.getElementById("reg-name").value;
+  const menu = document.getElementById("reg-menu").value; // 追加
+  const memo = document.getElementById("reg-memo").value;
+
+  if (!name) {
+    alert("お客様名を入力してください");
+    return;
+  }
+
+  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  data.push({ date, time, name, menu, memo }); // menuを追加
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+  document.getElementById("reg-name").value = "";
+  document.getElementById("reg-menu").value = ""; // リセット
+  document.getElementById("reg-memo").value = "";
+  displayData();
+}
+
+function displayData() {
+  const targetDate = document.getElementById("target-date").value;
+  const allData = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  const table = document.getElementById("schedule-body");
+  table.innerHTML = "";
+
+  for (let h = START_HOUR; h <= END_HOUR; h++) {
+    ["00", "30"].forEach(m => {
+      if (h === END_HOUR && m === "30") return;
+      
+      const timeStr = `${h}:${m}`;
+      const entry = allData.find(item => item.date === targetDate && item.time === timeStr);
+
+      const row = document.createElement("tr");
+      row.className = "time-row";
+      
+      let content = "";
+      if (entry) {
+        // メニュー[カット等]を名前の前に表示
+        const menuTag = entry.menu ? `[${entry.menu}] ` : "";
+        content = `<span class="booked-name">${entry.name}</span><br><span class="memo-text">${menuTag}${entry.memo}</span>`;
+        row.onclick = () => { if(confirm("予約を削除しますか？")) deleteData(entry); };
+      } else {
+        content = `<span style="color: #ccc; font-size: 11px;">--</span>`;
+        row.onclick = () => { document.getElementById("reg-time").value = timeStr; };
+      }
+
+      row.innerHTML = `
+        <th>${timeStr}</th>
+        <td>${content}</td>
+      `;
+      table.appendChild(row);
+    });
+  }
+}
+
+function deleteData(targetEntry) {
+  let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  // 削除条件にmenuも追加して正確に特定
+  data = data.filter(item => !(item.date === targetEntry.date && item.time === targetEntry.time && item.name === targetEntry.name && item.menu === targetEntry.menu));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  displayData();
+}
+
+function exportData() {
+  const data = localStorage.getItem(STORAGE_KEY);
+  const blob = new Blob([data], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `infini_backup_${new Date().toLocaleDateString()}.json`;
+  a.click();
+}
+// 使い方ヘルプを表示する関数
+function showHelp() {
+  const message = `
+【INFINI管理システム 使い方】
+
+1. 予約の入れ方
+・「表示日を選択」で日付を選びます。
+・「時間」「お客様名」「メニュー」を選び「予約を追加」を押します。
+
+2. 予約の確認・削除
+・下の表に名前が表示されます。
+・予約を消したい時は、その時間をタップすると削除の確認が出ます。
+
+3. スケジュール表の活用
+・空いている時間をタップすると、入力欄の「時間」が自動セットされます。
+
+4. データの保存
+・「バックアップ保存」を押すと、現在のデータをファイルとして保存できます。
+  `;
+  alert(message);
+}
+</script>
+
+</body>
+</html>
